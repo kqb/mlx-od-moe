@@ -5,7 +5,12 @@ __version__ = "0.1.0"
 from .expert_store import UnifiedMemoryExpertStore
 from .shadow_model import ExpertPredictor, ShadowRunner
 from .od_moe_layer import ODMoELayer
-from .model import KimiODMoEModel, KimiODMoEConfig, KVCache, Attention, TransformerBlock
+from .model import (
+    KimiODMoEModel, KimiODMoEConfig,
+    KVCache, MLACache,
+    Attention, MLAttention,
+    DenseMLP, TransformerBlock,
+)
 
 __all__ = [
     "UnifiedMemoryExpertStore",
@@ -15,6 +20,9 @@ __all__ = [
     "KimiODMoEModel",
     "KimiODMoEConfig",
     "KVCache",
+    "MLACache",
     "Attention",
+    "MLAttention",
+    "DenseMLP",
     "TransformerBlock",
 ]

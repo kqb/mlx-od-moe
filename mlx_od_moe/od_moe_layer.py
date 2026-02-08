@@ -29,26 +29,43 @@ class ODMoELayer(nn.Module):
         num_experts: int = 384,
         top_k: int = 8,
         expert_store: Optional[UnifiedMemoryExpertStore] = None,
-        shadow_runner: Optional[ShadowRunner] = None
+        shadow_runner: Optional[ShadowRunner] = None,
+        n_shared_experts: int = 0,
+        scoring_func: str = "softmax",
+        routed_scaling_factor: float = 1.0,
+        num_layers: int = 28,
     ):
         super().__init__()
-        
+
         self.layer_idx = layer_idx
         self.hidden_dim = hidden_dim
         self.ffn_dim = ffn_dim
         self.num_experts = num_experts
         self.top_k = top_k
-        
+        self.scoring_func = scoring_func
+        self.routed_scaling_factor = routed_scaling_factor
+        self.num_layers = num_layers
+
         self.expert_store = expert_store
         self.shadow_runner = shadow_runner
-        
+
         # Router/gate (always resident, small: 4096 * 384 ≈ 1.5MB)
         self.gate = nn.Linear(hidden_dim, num_experts)
-        
+
+        # Shared expert (always resident, runs on every token)
+        self.n_shared_experts = n_shared_experts
+        if n_shared_experts > 0:
+            shared_dim = n_shared_experts * ffn_dim
+            self.shared_gate_proj = nn.Linear(hidden_dim, shared_dim, bias=False)
+            self.shared_up_proj = nn.Linear(hidden_dim, shared_dim, bias=False)
+            self.shared_down_proj = nn.Linear(shared_dim, hidden_dim, bias=False)
+        else:
+            self.shared_gate_proj = None
+
         # Currently loaded experts (working set)
         # Format: {expert_idx: (w1, w2, w3)}
         self.active_experts = {}
-        
+
         # Expert architecture: Gated MLP
         # w1: up-projection (hidden → ffn)
         # w2: down-projection (ffn → hidden)
@@ -212,9 +229,14 @@ class ODMoELayer(nn.Module):
         # Router logits
         router_logits = self.gate(x_flat)  # (batch*seq, num_experts)
 
+        # Scoring function: sigmoid for K2.5, softmax for others
+        if self.scoring_func == "sigmoid":
+            router_probs = mx.sigmoid(router_logits)
+        else:
+            router_probs = mx.softmax(router_logits, axis=-1)
+
         # Select top-k experts per token
-        top_k_indices = mx.argsort(router_logits, axis=-1)[:, -self.top_k:]
-        router_probs = mx.softmax(router_logits, axis=-1)
+        top_k_indices = mx.argsort(router_probs, axis=-1)[:, -self.top_k:]
 
         # Gather top-k weights for selected experts
         # Shape: (num_tokens, top_k)
@@ -222,6 +244,9 @@ class ODMoELayer(nn.Module):
 
         # Normalize top-k weights to sum to 1
         top_k_weights = top_k_weights / mx.sum(top_k_weights, axis=-1, keepdims=True)
+
+        # Apply routing scaling factor (K2.5 uses 2.827)
+        top_k_weights = top_k_weights * self.routed_scaling_factor
 
         # Compute load balancing auxiliary loss
         self.aux_loss = self._compute_load_balancing_loss(router_probs, top_k_indices)
@@ -265,8 +290,16 @@ class ODMoELayer(nn.Module):
             # Weighted addition: expert_weights_per_token is (num_tokens,), broadcast to (num_tokens, 1)
             output = output + expert_output * expert_weights_per_token[:, None]
 
+        # Add shared expert output (always-on, not routed)
+        if self.shared_gate_proj is not None:
+            gate = self.shared_gate_proj(x_flat)
+            shared_out = self.shared_down_proj(
+                gate * mx.sigmoid(gate) * self.shared_up_proj(x_flat)
+            )
+            output = output + shared_out
+
         # Trigger prefetch for next layer
-        if self.shadow_runner and self.layer_idx < 27:
+        if self.shadow_runner and self.layer_idx < self.num_layers - 1:
             next_experts = self.shadow_runner.get_predictions_for_layer(self.layer_idx + 1)
             if self.expert_store:
                 self.expert_store.prefetch(self.layer_idx + 1, next_experts)
