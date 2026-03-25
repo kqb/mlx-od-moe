@@ -30,7 +30,7 @@ Modern MoE models like **Kimi-K2.5** (375GB) are too large to fit in memory on c
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/mlx-od-moe.git
+git clone https://github.com/kqb/mlx-od-moe.git
 cd mlx-od-moe
 
 # Install with uv (recommended)
@@ -420,7 +420,7 @@ Contributions welcome! Areas of interest:
 
 ```bash
 # Clone and install in editable mode
-git clone https://github.com/yourusername/mlx-od-moe.git
+git clone https://github.com/kqb/mlx-od-moe.git
 cd mlx-od-moe
 pip install -e .[dev]
 
@@ -443,7 +443,7 @@ If you use mlx-od-moe in research, please cite:
   title = {mlx-od-moe: On-Demand Mixture of Experts for Apple Silicon},
   author = {Your Name},
   year = {2026},
-  url = {https://github.com/yourusername/mlx-od-moe}
+  url = {https://github.com/kqb/mlx-od-moe}
 }
 ```
 
