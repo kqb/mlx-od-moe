@@ -55,3 +55,18 @@ logs/
 # Temporary files
 *.tmp
 tmp/
+# AI agent metadata
+CLAUDE.md
+.claude/
+.serena/
+.windsurf/
+.codeiumignore
+memory-bank/
+reference_files/
+# OS / editor
+*.bak
+*.backup
+# Build / deps
+node_modules/
+.venv/
+*.pyc
